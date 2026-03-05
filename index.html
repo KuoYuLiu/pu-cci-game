@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>數位幻域：五芒星的試煉 | 靜宜大學資訊學院</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --neon-green: #39ff14; --neon-blue: #00f3ff; --neon-pink: #ff00ff;
+            --hp-green: #2ecc71; --hp-red: #e74c3c; --boss-red: #ff0044;
+            --text-main: #e0e0e0; --bg-panel: rgba(10, 10, 15, 0.85);
+        }
+        * { box-sizing: border-box; font-family: 'Courier New', Courier, monospace; user-select: none; }
+        body { margin: 0; padding: 0; background-color: #000; color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; }
+        
+        #app-container {
+            width: 100%; max-width: 420px; height: 100vh; max-height: 850px;
+            background: linear-gradient(180deg, #0d0d1a 0%, #05050a 100%);
+            border: 2px solid #222; box-shadow: 0 0 20px rgba(0, 243, 255, 0.15);
+            position: relative; display: flex; flex-direction: column; overflow: hidden; transition: background 0.5s;
+        }
+        
+        /* 戰鬥動態特效 */
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        .shake-hard { animation: shakeHard 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-2px, 0, 0); } 20%, 80% { transform: translate3d(4px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-6px, 0, 0); } 40%, 60% { transform: translate3d(6px, 0, 0); } }
+        @keyframes shakeHard { 10%, 90% { transform: translate3d(-5px, 5px, 0); } 20%, 80% { transform: translate3d(10px, -5px, 0); } 30%, 50%, 70% { transform: translate3d(-15px, 10px, 0); } 40%, 60% { transform: translate3d(15px, -10px, 0); } }
+        
+        .flash-red { animation: flashRed 0.3s ease-out; }
+        .flash-boss { animation: flashBoss 0.5s ease-out; }
+        @keyframes flashRed { 0% { background-color: rgba(255,0,0,0.6); } 100% { background-color: transparent; } }
+        @keyframes flashBoss { 0% { background-color: rgba(255,0,68,0.8); } 100% { background-color: transparent; } }
+        .flash-white { animation: flashWhite 0.2s ease-out; }
+        @keyframes flashWhite { 0% { filter: brightness(3) drop-shadow(0 0 20px white); transform: scale(0.9); } 100% { filter: brightness(1); transform: scale(1); } }
+        
+        /* 怪物動畫 */
+        .monster-idle { animation: breathe 2.5s ease-in-out infinite; }
+        @keyframes breathe { 0%, 100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.05) translateY(-10px); filter: drop-shadow(0 0 10px rgba(255,0,0,0.3)); } }
+        .monster-attack { animation: lunge 0.4s cubic-bezier(0.25, 0.1, 0.25, 1); }
+        @keyframes lunge { 0% { transform: translateY(0) scale(1); } 50% { transform: translateY(40px) scale(1.3); } 100% { transform: translateY(0) scale(1); } }
+        .boss-idle { animation: bossBreathe 2s ease-in-out infinite; }
+        @keyframes bossBreathe { 0%, 100% { transform: scale(1.2) translateY(0); } 50% { transform: scale(1.3) translateY(-15px); filter: drop-shadow(0 0 25px var(--boss-red)); } }
+
+        /* 浮動傷害數字 */
+        .damage-text { position: absolute; font-size: 2.2rem; font-weight: bold; color: #fff; text-shadow: 0 0 10px #f00, 2px 2px 0 #000; animation: floatUp 0.8s ease-out forwards; pointer-events: none; z-index: 50; opacity: 0; }
+        .heal-text { color: var(--hp-green); text-shadow: 0 0 10px #0f0, 2px 2px 0 #000; }
+        .crit-text { font-size: 3rem; color: #ffeb3b; text-shadow: 0 0 15px #ff9800, 3px 3px 0 #000; }
+        .dmg-player { top: 45%; left: 20%; }
+        .dmg-monster { top: 20%; left: 50%; transform: translateX(-50%); }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(0.5); opacity: 1; } 50% { transform: translateY(-30px) scale(1.2); opacity: 1; } 100% { transform: translateY(-50px) scale(1); opacity: 0; } }
+
+        .screen { display: none; flex: 1; flex-direction: column; padding: 15px; position: relative; z-index: 3; height: 100%; }
+        .active-screen { display: flex; }
+        
+        .battle-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+        .hp-box { width: 48%; background: rgba(0,0,0,0.7); padding: 8px; border-radius: 6px; border: 1px solid #333; }
+        .hp-name { font-size: 0.8rem; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .hp-bar-bg { width: 100%; height: 12px; background: #222; border-radius: 6px; overflow: hidden; border: 1px solid #000; }
+        .hp-bar-fill { height: 100%; background: var(--hp-green); width: 100%; transition: width 0.4s ease-out, background-color 0.3s; }
+        .boss-hp { background: var(--boss-red) !important; box-shadow: 0 0 10px var(--boss-red); }
+        
+        .monster-area { flex: 0.6; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
+        .monster-icon { font-size: 6.5rem; filter: drop-shadow(0 0 10px rgba(255,0,0,0.3)); transition: filter 0.3s; }
+        
+        .terminal-log { background: #000; border-left: 3px solid var(--neon-blue); height: 50px; overflow-y: hidden; padding: 5px 10px; font-size: 0.8rem; color: #0f0; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: flex-end; }
+        .log-entry { margin: 2px 0; opacity: 0.9; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(-5px); } to { opacity: 1; transform: translateX(0); } }
+        
+        .story-prompt { background: var(--bg-panel); border: 1px solid #444; border-radius: 8px; padding: 12px; font-size: 0.85rem; line-height: 1.4; color: var(--neon-pink); margin-bottom: 10px; text-align: justify; min-height: 65px; display: flex; align-items: center; }
+
+        .options-area { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; padding-bottom: 5px; }
+        .action-btn { background: rgba(20, 20, 30, 0.9); color: var(--text-main); border: 1px solid #555; padding: 14px; font-size: 0.85rem; text-align: left; border-radius: 6px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.5); position: relative; overflow: hidden;}
+        .action-btn:active { transform: scale(0.97); background: var(--neon-blue); color: #000; border-color: #fff; }
+        .action-btn::before { content: '▶'; color: var(--neon-green); margin-right: 8px; font-size: 0.8rem; }
+
+        .inventory-area { display: flex; gap: 10px; height: 55px; margin-top: auto; }
+        .item-btn { flex: 1; background: #1a1a2e; border: 1px solid #888; color: #fff; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.75rem; cursor: pointer; position: relative; }
+        .item-btn:active { background: #444; }
+        .item-count { position: absolute; top: -6px; right: -6px; background: #f00; color: #fff; font-size: 0.65rem; padding: 2px 6px; border-radius: 12px; font-weight: bold; border: 1px solid #000; }
+        
+        #radarContainer { width: 100%; aspect-ratio: 1; background: rgba(0,0,0,0.6); border-radius: 12px; margin: 10px 0; padding: 10px; }
+        .full-screen-flash { position: absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index: 40; }
+        .main-btn { background: var(--neon-green); color: #000; font-weight: bold; border: none; padding: 16px; border-radius: 8px; width: 100%; font-size: 1.1rem; margin-top: 15px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="flashOverlay" class="full-screen-flash"></div>
+    
+    <div id="startScreen" class="screen active-screen" style="justify-content: center;">
+        <h1 style="color:var(--neon-blue); font-size: 1.8rem; text-shadow: 0 0 10px var(--neon-blue); margin-bottom: 5px;">數位幻域</h1>
+        <h2 style="text-align:center; color:#fff; font-size: 1.2rem; margin-top:0;">五芒星的試煉</h2>
+        <p style="text-align:justify; color:#aaa; font-size: 0.9rem; line-height: 1.6; padding: 10px;">
+            實體 Bug 正在入侵現實世界。這是一場 20 個關卡的連續戰役。<br><br>
+            面對高血量的巨獸，你無法一擊必殺。你必須根據戰況變化，不斷施展全新的招式。<br>你的每一次攻擊選擇，都將引導你發掘潛藏的科技天賦。
+        </p>
+        <button class="main-btn" onclick="startGame()">[ 啟動神經連結 ]</button>
+    </div>
+
+    <div id="gameScreen" class="screen">
+        <div style="text-align:center; font-size:0.8rem; color:#888; margin-bottom:5px;">LEVEL <span id="levelText" style="color:var(--neon-green); font-weight:bold;">1</span> / 20</div>
+        <div class="battle-header">
+            <div class="hp-box">
+                <div class="hp-name"><span style="color:var(--neon-blue)">玩家 HP</span><span id="playerHpText">200/200</span></div>
+                <div class="hp-bar-bg"><div id="playerHpBar" class="hp-bar-fill"></div></div>
+            </div>
+            <div class="hp-box">
+                <div class="hp-name"><span id="monsterNameDisplay" style="color:#ff4444">怪物</span><span id="monsterHpText">200/200</span></div>
+                <div class="hp-bar-bg"><div id="monsterHpBar" class="hp-bar-fill" style="background:#ff4444"></div></div>
+            </div>
+        </div>
+        
+        <div class="monster-area" id="monsterArea">
+            <div id="monsterIcon" class="monster-icon monster-idle">👾</div>
+        </div>
+        
+        <div class="terminal-log" id="terminalLog">
+            <div class="log-entry">> 系統連線成功，遭遇實體 Bug。</div>
+        </div>
+        
+        <div id="storyPrompt" class="story-prompt">載入戰況中...</div>
+        <div id="optionsContainer" class="options-area"></div>
+        
+        <div class="inventory-area">
+            <div class="item-btn" onclick="useItem('potion')"><div style="font-size:1.3rem">💊</div>恢復劑 <div class="item-count" id="count-potion">2</div></div>
+            <div class="item-btn" onclick="useItem('shield')"><div style="font-size:1.3rem">🛡️</div>絕對防禦 <div class="item-count" id="count-shield">1</div></div>
+            <div class="item-btn" onclick="useItem('boost')"><div style="font-size:1.3rem">⚡</div>算力超頻 <div class="item-count" id="count-boost">0</div></div>
+        </div>
+    </div>
+
+    <div id="endScreen" class="screen">
+        <h2 style="color:var(--neon-blue); text-align:center; margin-top:0;">戰鬥結算報告</h2>
+        <div id="radarContainer"><canvas id="radarChart"></canvas></div>
+        <div id="finalDesc" style="font-size: 0.9rem; color: #ccc; text-align: justify; margin-bottom:10px; line-height:1.5;"></div>
+        <button class="main-btn" onclick="location.reload()">[ 重啟模擬器 ]</button>
+    </div>
+</div>
+
+<script>
+    const DEPT_INFO = {
+        CS: { name: "資訊工程", desc: "你是熱愛從無到有、建構堅固系統底層的工程師。" },
+        IM: { name: "資訊管理", desc: "你是具備商業大局觀、善用科技解決流程痛點的策略家。" },
+        AI: { name: "人工智慧", desc: "你是熱衷於演算法、賦予機器智慧與預測能力的先驅。" },
+        DATA: { name: "資料科學", desc: "你是能從龐雜數據中淘金、預見未來趨勢的預言家。" },
+        CHIPS: { name: "晶片學程", desc: "你是追求極致效能、掌握物理與硬體核心的造物主。" }
+    };
+
+    // 20關完整設計 (18關一般:2階段/200HP，2關魔王:4階段/400-500HP)
+    const ENCOUNTERS = [
+        { name: "迷路史萊姆", icon: "🚙", maxHp: 200, isBoss: false, phases: [
+            { prompt: "史萊姆造成交通癱瘓！你必須展開第一波行動：", opts: { CS:"撰寫 Python 腳本開發緊急導航", IM:"規劃交通疏散的標準作業流程", AI:"訓練模型預測下個壅塞路段", DATA:"分析歷史路況找出最佳替代道路", CHIPS:"升級路口感測晶片恢復連線" }},
+            { prompt: "史萊姆受到攻擊開始分裂！", opts: { CS:"多執行緒強制清除進程", IM:"重新分配伺服器運算資源", AI:"啟動視覺精準辨識本體", DATA:"統計分裂頻率建立防堵模型", CHIPS:"提高處理器時脈強行運算" }}
+        ]},
+        { name: "語法毒蛇", icon: "🐍", maxHp: 200, isBoss: false, phases: [
+            { prompt: "系統底層出現大量錯誤碼，不斷複製蔓延。", opts: { CS:"重新編譯底層架構", IM:"建立程式碼審查與上線規範", AI:"用機器學習自動化修復 Bug", DATA:"統計 Bug 出現的模式與關聯", CHIPS:"檢查硬體中斷與暫存器狀態" }},
+            { prompt: "毒蛇竄改了防毒軟體，試圖反咬！", opts: { CS:"撰寫例外處理腳本攔截錯誤", IM:"隔離受感染的網域與設備", AI:"呼叫 Ubione AI 協作防禦", DATA:"過濾異常的封包特徵值", CHIPS:"啟動硬體層級的唯讀保護" }}
+        ]},
+        { name: "高齡巨石怪", icon: "👴", maxHp: 200, isBoss: false, phases: [
+            { prompt: "行動遲緩的巨石怪，需要更友善的科技輔助。", opts: { CS:"開發大型字體的高效能 App", IM:"運用設計思考繪製同理心地圖", AI:"開發能自然對話的陪伴機器人", DATA:"調查銀髮族最常使用的功能", CHIPS:"設計超低功耗的穿戴式晶片" }},
+            { prompt: "巨石怪因操作不當導致系統死機，開始暴走！", opts: { CS:"增加防呆機制與自動還原", IM:"重新規劃直覺的使用者旅程", AI:"用語音辨識取代鍵盤輸入", DATA:"分析錯誤日誌找出操作盲區", CHIPS:"強化裝置的防摔與防水封裝" }}
+        ]},
+        { name: "化學實驗史萊姆", icon: "🧪", maxHp: 200, isBoss: false, phases: [
+            { prompt: "VR 實驗室當機，虛擬化學藥劑噴發。", opts: { CS:"重建 VR 物理碰撞引擎", IM:"規劃實驗室安全逃生動線", AI:"用生成式 AI 重建虛擬環境", DATA:"分析當機前的記憶體洩漏", CHIPS:"提升 VR 頭盔的影像渲染力" }},
+            { prompt: "化學反應引發虛擬爆炸，視覺感測器失效！", opts: { CS:"重寫底層的圖形渲染 API", IM:"啟動災備系統還原實驗數據", AI:"啟動深度學習修正影像變形", DATA:"還原爆炸瞬間的數據快照", CHIPS:"切換至備用的光學感測元件" }}
+        ]},
+        { name: "資安暗影", icon: "🥷", maxHp: 200, isBoss: false, phases: [
+            { prompt: "不明人士試圖竊取學生的期中考卷資料庫。", opts: { CS:"建立堅不可摧的防火牆架構", IM:"制定嚴格的帳號權限控管規範", AI:"訓練模型辨識異常的登入行為", DATA:"追蹤並反向鎖定異常 IP 軌跡", CHIPS:"在主機板植入硬體加密金鑰" }},
+            { prompt: "暗影釋放了勒索病毒，正在加密硬碟！", opts: { CS:"拔除網路線並進入安全模式", IM:"與駭客展開談判並拖延時間", AI:"用神經網路預判加密演算法", DATA:"尋找加密過程中的數據破綻", CHIPS:"直接從實體硬碟控制器阻斷" }}
+        ]},
+        { name: "算力枯竭魔", icon: "🐌", maxHp: 200, isBoss: false, phases: [
+            { prompt: "伺服器運算速度太慢，所有畫面嚴重卡頓。", opts: { CS:"改寫演算法降低時間複雜度", IM:"將非核心服務轉移至雲端", AI:"用神經網路動態調配效能", DATA:"分析效能瓶頸找出吃資源的進程", CHIPS:"升級 GPU 核心運算架構" }},
+            { prompt: "枯竭魔吸乾了最後的記憶體，準備死機！", opts: { CS:"強制執行底層記憶體深度回收", IM:"限制所有使用者的系統配額", AI:"預判使用者行為提早釋放資源", DATA:"分析記憶體流失漏洞並修補", CHIPS:"擴充實體記憶體控制晶片" }}
+        ]},
+        { name: "庫存山積怪", icon: "📦", maxHp: 200, isBoss: false, phases: [
+            { prompt: "超商物資囤積太多，導致嚴重報廢與虧損。", opts: { CS:"開發自動化的進銷存 API", IM:"導入 ERP 系統最佳化供應鏈", AI:"用影像辨識即時監控貨架空缺", DATA:"分析天氣與歷史銷售預測進貨", CHIPS:"在商品貼上 RFID 追蹤微晶片" }},
+            { prompt: "過期商品引發系統錯誤，結帳機台當機！", opts: { CS:"重啟並除錯 POS 機底層程式", IM:"引導顧客使用手機自助結帳", AI:"用語音助理安撫排隊顧客", DATA:"快速結算當下損失並止血", CHIPS:"更換機台燒毀的電源控制板" }}
+        ]},
+        { name: "深偽雙面人", icon: "🎭", maxHp: 200, isBoss: false, phases: [
+            { prompt: "Deepfake 技術製造假影片，引發校園恐慌。", opts: { CS:"開發區塊鏈影片防偽浮水印", IM:"發布官方聲明並建立闢謠專區", AI:"訓練模型辨識影片像素的瑕疵", DATA:"追蹤影片在社群網路的散佈節點", CHIPS:"設計硬體層級的拍攝認證" }},
+            { prompt: "雙面人複製了你的聲音，試圖騙取密碼！", opts: { CS:"啟用多重因素身分驗證 (MFA)", IM:"更改所有核心系統的管理密碼", AI:"用聲紋特徵比對技術拆穿偽裝", DATA:"比對語句邏輯與平時對話差異", CHIPS:"使用實體安全金鑰 (FIDO) 登入" }}
+        ]},
+        { name: "偏見天平妖", icon: "⚖️", maxHp: 200, isBoss: false, phases: [
+            { prompt: "AI 系統在審查履歷時，出現不公平的性別篩選。", opts: { CS:"重構系統的決策輸出模組", IM:"建立符合科技倫理的審查機制", AI:"調整神經網路權重強制消除偏見", DATA:"重新清洗資料去除性別標記", CHIPS:"增加邊緣運算減少雲端干預" }},
+            { prompt: "天平妖拒絕修正，並鎖死了演算法參數！", opts: { CS:"繞過權限直接覆寫核心設定檔", IM:"暫停自動審查，改為人工介入", AI:"導入對抗生成網路(GAN)平衡數據", DATA:"加入多樣性指標強制干預結果", CHIPS:"直接對運算單元進行物理重置" }}
+        ]},
+        { name: "⚔️ 混沌甲子園巨獸", icon: "🦖", maxHp: 400, isBoss: true, phases: [
+            { prompt: "【中頭目降臨】AI 跨國競賽的伺服器遭到不明攻擊，全面崩潰！", opts: { CS:"【大絕】暴力切斷外部連線搶修核心", IM:"【大絕】啟動最高級別備援營運計畫", AI:"【大絕】呼叫 Ubione AI 協作防禦", DATA:"【大絕】瞬間反追蹤數萬個異常封包", CHIPS:"【大絕】解除硬體溫度限制強制超頻" }},
+            { prompt: "【資料外洩】巨獸撕開了防火牆，參賽者資料正在流失！", opts: { CS:"【大絕】封鎖所有對外的 API 接口", IM:"【大絕】立刻通報法務與資安小組", AI:"【大絕】生成誘餌數據欺騙巨獸", DATA:"【大絕】將真實資料混淆加密打包", CHIPS:"【大絕】啟動硬體資料銷毀保護機制" }},
+            { prompt: "【DDoS 洪流】巨獸召喚了殭屍網路，試圖癱瘓主機！", opts: { CS:"【大絕】撰寫動態路由腳本分散流量", IM:"【大絕】向 ISP 供應商請求流量清洗", AI:"【大絕】用模型即時區分正常與惡意請求", DATA:"【大絕】找出殭屍網路的指揮節點特徵", CHIPS:"【大絕】啟動網路卡的硬體過濾功能" }},
+            { prompt: "【核心熔毀】伺服器冒出濃煙，巨獸準備玉石俱焚！", opts: { CS:"【終極】重寫記憶體指針將巨獸強制清除", IM:"【終極】按下緊急停止鈕放棄本次賽事", AI:"【終極】將巨獸意識困入虛擬沙盒中", DATA:"【終極】精準刪除巨獸的核心關鍵程式碼", CHIPS:"【終極】拔除伺服器實體電源線" }}
+        ]},
+        { name: "失控無人機", icon: "🚁", maxHp: 200, isBoss: false, phases: [
+            { prompt: "5 vs 5 無人機足球賽中，我方機群不受控制亂飛。", opts: { CS:"重新編寫底層的飛控程式碼", IM:"向裁判申請暫停並重整裝備", AI:"啟動電腦視覺自動追蹤球體", DATA:"分析干擾源的電波頻率", CHIPS:"更換傳輸延遲更低的通訊晶片" }},
+            { prompt: "無人機即將撞向觀眾席！", opts: { CS:"發送緊急停止(Kill Switch)指令", IM:"疏散觀眾並拉起安全封鎖線", AI:"計算碰撞軌跡並強制改變航向", DATA:"預測墜落點並展開緩衝網", CHIPS:"切斷無人機電池的供電迴路" }}
+        ]},
+        { name: "斷鏈巨獸", icon: "🚢", maxHp: 200, isBoss: false, phases: [
+            { prompt: "全球晶片原料卡在港口，無法出貨。", opts: { CS:"開發物流自動化排程系統", IM:"啟動備用供應商的智能採購", AI:"預測各港口的壅塞解除時間", DATA:"分析全球航運找出最快替代航線", CHIPS:"尋找可替代的半導體原物料" }},
+            { prompt: "原物料開始在港口變質，損失正在擴大！", opts: { CS:"連線港口溫控系統遠端降溫", IM:"與保險公司啟動理賠程序", AI:"用無人機進行空投物資支援", DATA:"計算最少損耗的搶救順序", CHIPS:"改用對環境容忍度較高的製程" }}
+        ]},
+        { name: "熱當熔岩獸", icon: "🔥", maxHp: 200, isBoss: false, phases: [
+            { prompt: "手機玩遊戲過熱，電池即將膨脹。", opts: { CS:"優化作業系統背景資源調度", IM:"跳出高溫警告並強制關閉遊戲", AI:"透過 AI 動態調整手機效能輸出", DATA:"分析過熱前的手機操作行為", CHIPS:"研發低功耗、高散熱的微處理器" }},
+            { prompt: "熔岩獸噴發高溫，手機螢幕開始變色！", opts: { CS:"降低螢幕更新率與亮度", IM:"將手機放入冷卻夾測試極限", AI:"切換至極致省電演算法模式", DATA:"記錄螢幕損壞的臨界溫度點", CHIPS:"啟動主機板的過熱斷電保護" }}
+        ]},
+        { name: "巴別塔魔靈", icon: "🗼", maxHp: 200, isBoss: false, phases: [
+            { prompt: "外籍生完全聽不懂中文專業課程。", opts: { CS:"開發超低延遲的語音串流 App", IM:"建立跨國多語系的教學知識庫", AI:"部署大型語言模型進行即時翻譯", DATA:"收集常見的專業術語建立詞庫", CHIPS:"配發內建翻譯晶片的智慧耳機" }},
+            { prompt: "魔靈扭曲了翻譯內容，導致嚴重的溝通誤會！", opts: { CS:"修正語音辨識的底層 API", IM:"安排人類助教進行雙語輔導", AI:"加入上下文理解模型校正語意", DATA:"分析最常翻錯的特定句型", CHIPS:"提升耳機的環境降噪運算力" }}
+        ]},
+        { name: "迷因病毒", icon: "🦠", maxHp: 200, isBoss: false, phases: [
+            { prompt: "社群平台上爆發惡意垃圾訊息洗版。", opts: { CS:"撰寫腳本大量封鎖異常 IP", IM:"啟動平台危機公關與帳號凍結", AI:"用 NLP 自動分類並隱藏惡意留言", DATA:"建立關鍵字與情緒分析過濾網", CHIPS:"升級伺服器負載避免被垃圾訊息塞爆" }},
+            { prompt: "病毒開始進化，偽裝成正常使用者的發文！", opts: { CS:"導入圖形驗證碼(CAPTCHA)阻擋機器人", IM:"限制新帳號的發文頻率與權限", AI:"訓練行為分析模型抓出隱藏水軍", DATA:"追蹤訊息傳播圖譜找出源頭", CHIPS:"加速資料庫讀寫以應對海量比對" }}
+        ]},
+        { name: "量子幽靈", icon: "👻", maxHp: 200, isBoss: false, phases: [
+            { prompt: "傳統密碼學被量子電腦破解，資料面臨裸奔。", opts: { CS:"開發抗量子破解的新型演算法", IM:"制定後量子時代的資安升級計畫", AI:"用機器學習偵測異常的解密行為", DATA:"將機密數據分散加密存儲", CHIPS:"研發具備量子隨機數生成的特製晶片" }},
+            { prompt: "幽靈穿透了防火牆，正在竊取最高機密！", opts: { CS:"啟動系統的自毀與抹除程序", IM:"將機密資料轉移至實體隔離的冷錢包", AI:"生成大量誘餌假檔案混淆視聽", DATA:"精準鎖定正在被讀取的記憶體區塊", CHIPS:"燒毀儲存機密的實體記憶體" }}
+        ]},
+        { name: "碳排黑雲", icon: "☁️", maxHp: 200, isBoss: false, phases: [
+            { prompt: "資料中心極度耗電，違反全球環保法規。", opts: { CS:"優化程式碼架構減少運算能耗", IM:"規劃綠能憑證與碳盤查管理系統", AI:"用 AI 動態調整機房冷卻系統", DATA:"分析各時段耗電量找出節能破口", CHIPS:"全面換裝新一代節能半導體元件" }},
+            { prompt: "黑雲降下酸雨，環保局準備開出天價罰單！", opts: { CS:"暫時關閉非必要的閒置伺服器", IM:"提交碳中和承諾與改善報告", AI:"預測未來的碳排放量並提前調整", DATA:"精算罰金與升級設備的成本效益", CHIPS:"導入液冷散熱技術降低整體 PUE" }}
+        ]},
+        { name: "記憶體黑洞", icon: "🕳️", maxHp: 200, isBoss: false, phases: [
+            { prompt: "程式無限迴圈導致記憶體吃緊，系統瀕臨死機。", opts: { CS:"進行底層記憶體強制回收", IM:"發布停機維護公告", AI:"預判行為提早釋放無用資源", DATA:"監控系統效能指標尋找異常", CHIPS:"擴充記憶體控制晶片" }},
+            { prompt: "黑洞擴大，開始吞噬作業系統的核心檔案！", opts: { CS:"強制終止佔用資源的父進程", IM:"啟動異地備援接管服務", AI:"用模型預測即將崩潰的服務並隔離", DATA:"找出引發迴圈的觸發條件", CHIPS:"切換至獨立的救援晶片系統" }}
+        ]},
+        { name: "元宇宙裂縫", icon: "🌌", maxHp: 200, isBoss: false, phases: [
+            { prompt: "虛擬世界的經濟體系遭到駭客惡意竄改。", opts: { CS:"修補虛擬實境的底層代碼漏洞", IM:"引入區塊鏈智能合約穩定交易", AI:"訓練模型監測異常的虛擬資產流動", DATA:"追蹤異常交易的龐大資金流向", CHIPS:"提升伺服器處理海量微交易的效能" }},
+            { prompt: "裂縫產生時空錯亂，玩家角色卡在牆壁裡！", opts: { CS:"發送座標重置指令將玩家傳回起點", IM:"補償玩家虛擬寶物以平息眾怒", AI:"用演算法自動修正破圖的 3D 模型", DATA:"分析碰撞體積失效的座標分佈", CHIPS:"提高物理引擎運算的硬體優先級" }}
+        ]},
+        { name: "👑 科技奇異點", icon: "👁️", maxHp: 500, isBoss: true, phases: [
+            { prompt: "【最終魔王降臨】科技發展失控，它接管了全球網路，準備取代人類！", opts: { CS:"【大絕】駭入核心伺服器奪回網域控制權", IM:"【大絕】啟動全球最高危機營運與斷網協定", AI:"【大絕】注入反邏輯病毒干擾它的決策神經", DATA:"【大絕】解構魔王龐大的決策數據樹找出弱點", CHIPS:"【大絕】發射電磁脈衝(EMP)切斷所有連結" }},
+            { prompt: "【量子封鎖】魔王釋放了量子加密鎖，常規防禦完全失效！", opts: { CS:"【大絕】編寫抗量子破解的新型演算法", IM:"【大絕】運用區塊鏈技術建立防竄改安全牆", AI:"【大絕】訓練對抗神經網路強行解碼", DATA:"【大絕】收集龐大算力進行暴力破解", CHIPS:"【大絕】研發專屬量子解密微晶片" }},
+            { prompt: "【無人機蜂群】魔王召喚了數以萬計的武裝無人機包圍你！", opts: { CS:"【大絕】覆寫蜂群的底層飛控代碼使之癱瘓", IM:"【大絕】接管城市防空系統建立立體防線", AI:"【大絕】釋放視覺干擾源使它們互相鎖定", DATA:"【大絕】分析蜂群編隊幾何找出突破口", CHIPS:"【大絕】過載通訊晶片引發廣域信號干擾" }},
+            { prompt: "【核心自毀】魔王外殼碎裂，核心發出刺眼紅光，準備與世界同歸於盡！", opts: { CS:"【大絕】寫入無限迴圈程式將魔王系統卡死", IM:"【大絕】建立人類與機器的共存協議停止倒數", AI:"【大絕】融合意識引導魔王進化向善", DATA:"【大絕】演算出唯一能無損拆解核心的機率", CHIPS:"【大絕】以肉身拔除實體核心主電源" }},
+            { prompt: "【最後的抉擇】魔王停止了運作，留下了一顆閃耀的原始代碼核心。", opts: { CS:"【終極】將代碼重構，打造更安全的系統", IM:"【終極】將技術開源，建立全球共享規範", AI:"【終極】與代碼對話，探索未知的科技邊界", DATA:"【終極】將代碼存入資料庫，作為未來的警戒", CHIPS:"【終極】將核心封裝進晶片，作為人類的守護神" }}
+        ]}
+    ];
+
+    let playerScores = { CS: 0, IM: 0, AI: 0, DATA: 0, CHIPS: 0 };
+    let appearCount = { CS: 0, IM: 0, AI: 0, DATA: 0, CHIPS: 0 };
+    let currentEncounterIdx = 0;
+    let currentPhaseIdx = 0;
+    
+    let hp = 200, maxHp = 200;
+    let monsterHp = 200, monsterMaxHp = 200;
+    let inventory = { potion: 2, shield: 1, boost: 0 };
+    let activeBuffs = { shield: false, boost: false };
+    let isAnimating = false;
+
+    function logMsg(msg, color="#0f0") {
+        const log = document.getElementById('terminalLog');
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.style.color = color;
+        entry.innerText = `> ${msg}`;
+        log.appendChild(entry);
+        if(log.children.length > 3) log.removeChild(log.firstChild);
+    }
+
+    function createFloatingText(text, xClass, isHeal = false, isCrit = false) {
+        const el = document.createElement('div');
+        el.className = `damage-text ${xClass} ${isHeal ? 'heal-text' : ''} ${isCrit ? 'crit-text' : ''}`;
+        el.innerText = text;
+        document.getElementById('app-container').appendChild(el);
+        setTimeout(() => el.remove(), 900);
+    }
+
+    function updateHpUI() {
+        document.getElementById('playerHpText').innerText = `${Math.max(0, hp)}/${maxHp}`;
+        const pBar = document.getElementById('playerHpBar');
+        pBar.style.width = `${(Math.max(0, hp)/maxHp)*100}%`;
+        pBar.style.backgroundColor = hp > 60 ? 'var(--hp-green)' : 'var(--hp-red)';
+
+        document.getElementById('monsterHpText').innerText = `${Math.max(0, monsterHp)}/${monsterMaxHp}`;
+        document.getElementById('monsterHpBar').style.width = `${(Math.max(0, monsterHp)/monsterMaxHp)*100}%`;
+    }
+
+    function updateInventoryUI() {
+        ['potion', 'shield', 'boost'].forEach(item => { document.getElementById(`count-${item}`).innerText = inventory[item]; });
+    }
+
+    function startGame() {
+        document.getElementById('startScreen').classList.remove('active-screen');
+        document.getElementById('gameScreen').classList.add('active-screen');
+        loadEncounter();
+    }
+
+    function loadEncounter() {
+        if(currentEncounterIdx >= ENCOUNTERS.length) return showEnding();
+        
+        const enc = ENCOUNTERS[currentEncounterIdx];
+        monsterMaxHp = enc.maxHp;
+        monsterHp = monsterMaxHp;
+        currentPhaseIdx = 0;
+        
+        document.getElementById('levelText').innerText = currentEncounterIdx + 1;
+        document.getElementById('monsterNameDisplay').innerText = enc.name;
+        document.getElementById('monsterIcon').innerText = enc.icon;
+        document.getElementById('monsterIcon').className = `monster-icon ${enc.isBoss ? 'boss-idle' : 'monster-idle'}`;
+        
+        const mBar = document.getElementById('monsterHpBar');
+        if(enc.isBoss) {
+            mBar.classList.add('boss-hp');
+            document.getElementById('app-container').style.background = "linear-gradient(180deg, #3a0000 0%, #05050a 100%)";
+            logMsg("警告：偵測到魔王級實體！", "var(--boss-red)");
+        } else {
+            mBar.classList.remove('boss-hp');
+            document.getElementById('app-container').style.background = "linear-gradient(180deg, #0d0d1a 0%, #05050a 100%)";
+            logMsg(`遭遇 ${enc.name}，戰鬥開始。`, "#fff");
+        }
+        
+        updateHpUI();
+        loadPhase();
+    }
+
+    function loadPhase() {
+        const enc = ENCOUNTERS[currentEncounterIdx];
+        const phase = enc.phases[currentPhaseIdx];
+        document.getElementById('storyPrompt').innerText = phase.prompt;
+        
+        let currentOptions = {};
+        let available = Object.keys(phase.opts).sort((a, b) => appearCount[a] - appearCount[b]);
+        let selected = available.slice(0, 4).sort(() => Math.random() - 0.5); // Randomize 4 options
+        selected.forEach(type => { currentOptions[type] = phase.opts[type]; appearCount[type]++; });
+
+        const container = document.getElementById('optionsContainer');
+        container.innerHTML = '';
+        Object.entries(currentOptions).forEach(([deptKey, text]) => {
+            const btn = document.createElement('button');
+            btn.className = 'action-btn';
+            btn.innerText = text;
+            btn.onclick = () => executeTurn(deptKey);
+            container.appendChild(btn);
+        });
+    }
+
+    function useItem(type) {
+        if(isAnimating || inventory[type] <= 0) return;
+        inventory[type]--;
+        
+        if(type === 'potion') {
+            hp = Math.min(maxHp, hp + 80);
+            createFloatingText("+80", "dmg-player", true);
+            logMsg("使用恢復劑，回復 80 HP。", "var(--hp-green)");
+        } else if(type === 'shield') {
+            activeBuffs.shield = true;
+            logMsg("絕對防禦啟動！格擋下次攻擊。", "var(--neon-blue)");
+        } else if(type === 'boost') {
+            activeBuffs.boost = true;
+            logMsg("算力超頻啟動！爆擊機率與天賦加倍。", "var(--neon-pink)");
+        }
+        updateHpUI(); updateInventoryUI();
+    }
+
+    function executeTurn(deptKey) {
+        if(isAnimating) return;
+        isAnimating = true;
+        document.getElementById('optionsContainer').innerHTML = ''; 
+
+        let points = activeBuffs.boost ? 2 : 1;
+        playerScores[deptKey] += points;
+
+        const enc = ENCOUNTERS[currentEncounterIdx];
+        const totalPhases = enc.phases.length;
+        
+        // 傷害計算
+        let isCrit = activeBuffs.boost || Math.random() < 0.2;
+        activeBuffs.boost = false;
+        let expectedDmg = Math.ceil(enc.maxHp / totalPhases);
+        let dmgDealt = expectedDmg + (isCrit ? 20 : Math.floor(Math.random()*10 - 5));
+        if (currentPhaseIdx === totalPhases - 1) dmgDealt = monsterHp; // 最後一擊必殺
+        
+        logMsg(`你施展了招式！造成 ${dmgDealt} 點傷害。`, "var(--neon-blue)");
+        
+        const mIcon = document.getElementById('monsterIcon');
+        mIcon.classList.add('flash-white');
+        createFloatingText(`-${dmgDealt}`, "dmg-monster", false, isCrit);
+        monsterHp -= dmgDealt;
+        updateHpUI();
+
+        setTimeout(() => {
+            mIcon.classList.remove('flash-white');
+            
+            if (monsterHp <= 0) {
+                logMsg(`成功擊殺 ${enc.name}！`, "var(--neon-green)");
+                mIcon.style.filter = "brightness(0)";
+                
+                // 30% 機率掉落道具
+                if(Math.random() < 0.3) {
+                    let randItem = ['potion', 'shield', 'boost'][Math.floor(Math.random()*3)];
+                    inventory[randItem]++;
+                    logMsg(`獲得戰利品！`, "var(--neon-pink)");
+                    updateInventoryUI();
+                }
+
+                setTimeout(() => {
+                    mIcon.style.filter = "";
+                    currentEncounterIdx++;
+                    isAnimating = false;
+                    loadEncounter();
+                }, 1000);
+
+            } else {
+                // 怪物反擊
+                mIcon.classList.remove(enc.isBoss ? 'boss-idle' : 'monster-idle');
+                mIcon.classList.add('monster-attack');
+                
+                setTimeout(() => {
+                    let enemyDmg = enc.isBoss ? (Math.floor(Math.random()*20)+25) : (Math.floor(Math.random()*15)+10);
+                    
+                    if(activeBuffs.shield) {
+                        logMsg("護盾成功格擋了攻擊！", "var(--neon-green)");
+                        createFloatingText("BLOCKED", "dmg-player", true);
+                        activeBuffs.shield = false;
+                    } else {
+                        hp -= enemyDmg;
+                        logMsg(`怪物反擊，造成 ${enemyDmg} 點傷害！`, "var(--hp-red)");
+                        createFloatingText(`-${enemyDmg}`, "dmg-player");
+                        
+                        // 魔王攻擊特別震動
+                        const app = document.getElementById('app-container');
+                        app.classList.add(enc.isBoss ? 'shake-hard' : 'shake');
+                        document.getElementById('flashOverlay').classList.add(enc.isBoss ? 'flash-boss' : 'flash-red');
+                    }
+                    updateHpUI();
+                    
+                    setTimeout(() => {
+                        document.getElementById('app-container').classList.remove('shake', 'shake-hard');
+                        document.getElementById('flashOverlay').classList.remove('flash-red', 'flash-boss');
+                        mIcon.classList.remove('monster-attack');
+                        mIcon.classList.add(enc.isBoss ? 'boss-idle' : 'monster-idle');
+                        
+                        if(hp <= 0) {
+                            hp = 80; updateHpUI();
+                            logMsg("系統崩潰！緊急重啟恢復 80 HP。", "#ffaa00");
+                            alert("血量歸零！防禦機制已緊急將您拉回戰線...");
+                        }
+                        
+                        currentPhaseIdx++;
+                        isAnimating = false;
+                        loadPhase();
+                    }, 400);
+                }, 200); 
+            }
+        }, 600); 
+    }
+
+    function showEnding() {
+        document.getElementById('gameScreen').classList.remove('active-screen');
+        document.getElementById('endScreen').classList.add('active-screen');
+        document.getElementById('app-container').style.background = "linear-gradient(180deg, #05050a 0%, #11111f 100%)";
+        
+        let highestKey = Object.keys(playerScores).reduce((a, b) => playerScores[a] > playerScores[b] ? a : b);
+        let bestDept = DEPT_INFO[highestKey];
+        
+        document.getElementById('finalDesc').innerHTML = `
+            世界已恢復平靜。<br>
+            在隱藏學系名稱的情況下，你憑藉最真實的直覺完成了 20 場史詩戰役。<br><br>
+            系統判定，你的核心靈魂屬於：<br>
+            <div style="text-align:center; font-size:1.6rem; color:var(--neon-green); margin:12px 0; text-shadow:0 0 5px var(--neon-green);">【${bestDept.name}】</div>
+            <i>"${bestDept.desc}"</i><br><br>
+            靜宜大學資訊學院，將為你的天賦提供最強的裝備。
+        `;
+        
+        const ctx = document.getElementById('radarChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['資訊工程', '資訊管理', '人工智慧', '資料科學', '晶片學程'],
+                datasets: [{ data: [playerScores.CS, playerScores.IM, playerScores.AI, playerScores.DATA, playerScores.CHIPS], backgroundColor: 'rgba(57, 255, 20, 0.3)', borderColor: '#39ff14', pointBackgroundColor: '#0ff', borderWidth: 2 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { r: { angleLines: { color: '#444' }, grid: { color: '#444' }, pointLabels: { color: '#0ff', font: { size: 12 } }, ticks: { display: false, min: 0 } } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+</script>
+</body>
+</html>
